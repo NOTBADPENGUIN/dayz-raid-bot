@@ -164,7 +164,7 @@ async function phoneCallAlert() {
   for (const num of numbers) {
     try {
       await twilio.calls.create({
-        twiml: '<Response><Say language="fr-FR" voice="alice">Alerte raid sur votre serveur DayZ. Un raid est en cours. Connectez-vous immédiatement.</Say></Response>',
+        twiml: '<Response><Say language="fr-FR" voice="alice">Alerte raid sur votre serveur DayZ. Un raid est en cours. Connectez vous immédiatement.</Say></Response>',
         to: num.trim(),
         from: process.env.TWILIO_FROM,
       });
