@@ -14,6 +14,8 @@ try { require('sodium'); } catch(e) {
 
 process.env.FFMPEG_PATH = ffmpegPath;
 
+const COOLDOWN_MS = (parseInt(process.env.COOLDOWN_SECONDS) || 60) * 1000;
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -37,16 +39,28 @@ app.post('/webhook', async (req, res) => {
   await triggerRaidAlert(body);
 });
 
+async function logToDiscord(guild, message) {
+  if (!process.env.LOG_CHANNEL_ID) return;
+  const logChannel = guild.channels.cache.get(process.env.LOG_CHANNEL_ID);
+  if (logChannel) {
+    await logChannel.send(message).catch(() => {});
+  }
+}
+
 async function triggerRaidAlert(data) {
   const maintenant = Date.now();
-  if (maintenant - dernierRaid < 60000) {
-    console.log('⏳ Cooldown actif, alerte ignorée.');
-    return;
-  }
-  dernierRaid = maintenant;
+  const tempsRestant = COOLDOWN_MS - (maintenant - dernierRaid);
 
   const guild = client.guilds.cache.get(process.env.GUILD_ID);
   if (!guild) return;
+
+  if (tempsRestant > 0) {
+    const secondes = Math.ceil(tempsRestant / 1000);
+    console.log(`⏳ Cooldown actif, alerte ignorée. (${secondes}s restantes)`);
+    await logToDiscord(guild, `⏳ Alerte ignorée — cooldown actif (**${secondes}s** restantes)`);
+    return;
+  }
+  dernierRaid = maintenant;
 
   const channel = guild.channels.cache.get(process.env.ALERT_CHANNEL_ID);
 
@@ -64,6 +78,8 @@ async function triggerRaidAlert(data) {
 
     await channel.send({ content: '@everyone **RAID ALERT !**', embeds: [embed] });
   }
+
+  await logToDiscord(guild, `🚨 **Raid déclenché** — Localisation : \`${data.location || 'Inconnue'}\` — Joueur : \`${data.player || 'Raid Alarm'}\` — <t:${Math.floor(maintenant / 1000)}:T>`);
 
   await discordVoiceAlert(guild);
 
@@ -179,17 +195,56 @@ client.once('ready', () => {
   console.log(`✅ Bot connecté : ${client.user.tag}`);
 });
 
-// Tout message dans le channel d'alerte (humain ou bot) déclenche l'alerte automatiquement
 client.on('messageCreate', async (message) => {
-  // Ignorer les messages du bot lui-même pour éviter une boucle infinie
   if (message.author.id === client.user.id) return;
-
-  // Seulement dans le channel d'alerte configuré
   if (message.channelId !== process.env.ALERT_CHANNEL_ID) return;
 
-  console.log(`📨 Message détecté de : ${message.author.username} — "${message.content}"`);
+  // Commande !status
+  if (message.content.trim() === '!status') {
+    const maintenant = Date.now();
+    const tempsRestant = COOLDOWN_MS - (maintenant - dernierRaid);
+    const cooldownActif = tempsRestant > 0;
 
-  // Déclencher l'alerte immédiatement, peu importe qui envoie le message
+    const embed = new EmbedBuilder()
+      .setColor(cooldownActif ? 0xFFA500 : 0x00FF00)
+      .setTitle('📊 Statut du bot')
+      .addFields(
+        { name: '🤖 Bot', value: 'En ligne ✅', inline: true },
+        { name: '🔊 Alerte vocale', value: voiceAlertActive ? 'En cours ⚠️' : 'Inactive ✅', inline: true },
+        {
+          name: '⏳ Cooldown',
+          value: cooldownActif
+            ? `Actif — ${Math.ceil(tempsRestant / 1000)}s restantes`
+            : 'Inactif — prêt',
+          inline: true
+        },
+        {
+          name: '🕐 Dernier raid',
+          value: dernierRaid > 0
+            ? `<t:${Math.floor(dernierRaid / 1000)}:R>`
+            : 'Aucun depuis le démarrage',
+          inline: true
+        },
+        { name: '⏱️ Cooldown configuré', value: `${COOLDOWN_MS / 1000}s`, inline: true }
+      )
+      .setTimestamp();
+
+    await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // Commande !test
+  if (message.content.trim() === '!test') {
+    await message.reply('🧪 Lancement d\'une alerte de test...');
+    await triggerRaidAlert({
+      location: 'Test',
+      player: message.author.username
+    });
+    return;
+  }
+
+  // Tout autre message déclenche l'alerte
+  console.log(`📨 Message détecté de : ${message.author.username} — "${message.content}"`);
   await triggerRaidAlert({
     location: 'Détecté via message Discord',
     player: message.author.username
