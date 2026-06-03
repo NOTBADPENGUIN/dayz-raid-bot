@@ -5,6 +5,7 @@ const { spawn } = require('child_process');
 const express = require('express');
 const path = require('path');
 const ffmpegPath = require('ffmpeg-static');
+const https = require('https');
 
 try { require('sodium'); } catch(e) {
   try { require('libsodium-wrappers'); } catch(e2) {
@@ -129,6 +130,7 @@ async function triggerRaidAlert(data) {
   await logToDiscord(guild, `Raid declenche — ${data.location || 'Inconnue'} — ${data.player || 'Raid Alarm'}`);
   await envoyerDMsRaid(guild, data);
   demarrerSpamDM(data);
+  await ntfyAlert(data);
   await discordVoiceAlert(guild);
 
   if (process.env.TWILIO_SID) {
@@ -188,6 +190,30 @@ async function discordVoiceAlert(guild) {
   } catch (err) {
     voiceAlertActive = false;
   }
+}
+
+async function ntfyAlert(data) {
+  const topic = process.env.NTFY_TOPIC;
+  if (!topic) return;
+  const message = `Localisation: ${data.location || 'Inconnue'} | Detecte par: ${data.player || 'Raid Alarm'}`;
+  return new Promise((resolve) => {
+    const body = Buffer.from(message);
+    const req = https.request({
+      hostname: 'ntfy.sh',
+      port: 443,
+      path: `/${topic}`,
+      method: 'POST',
+      headers: {
+        'Title': 'RAID EN COURS !',
+        'Priority': 'urgent',
+        'Tags': 'rotating_light,bell',
+        'Content-Length': body.length,
+      }
+    }, res => { console.log(`ntfy envoye (${res.statusCode})`); resolve(); });
+    req.on('error', e => { console.error('Erreur ntfy:', e.message); resolve(); });
+    req.write(body);
+    req.end();
+  });
 }
 
 async function phoneCallAlert() {
