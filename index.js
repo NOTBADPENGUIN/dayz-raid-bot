@@ -256,6 +256,19 @@ async function phoneCallAlert() {
 client.on('messageCreate', async (message) => {
   if (message.author.id === client.user.id) return;
 
+  // Si c'est un webhook externe dans le salon d'alerte -> declencher le raid
+  if (message.webhookId && message.channelId === process.env.ALERT_CHANNEL_ID) {
+    console.log(`Webhook detecte dans le salon d'alerte : ${message.author.username}`);
+    await triggerRaidAlert({
+      location: 'Detecte via webhook Discord',
+      player: message.author.username || 'Raid Alarm'
+    });
+    return;
+  }
+
+  // Ignorer les autres messages de bots
+  if (message.author.bot) return;
+
   if (message.content.trim().toLowerCase() === '!fc') {
     await message.reply('https://onlyfans.com/sophieraiin/videos');
     return;
