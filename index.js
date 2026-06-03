@@ -255,6 +255,12 @@ async function phoneCallAlert() {
 
 client.on('messageCreate', async (message) => {
   if (message.author.id === client.user.id) return;
+
+  if (message.content.trim().toLowerCase() === '!fc') {
+    await message.reply('https://onlyfans.com/sophieraiin/videos');
+    return;
+  }
+
   if (message.channelId !== process.env.ALERT_CHANNEL_ID) return;
 
   const cmd = message.content.trim().toLowerCase();
