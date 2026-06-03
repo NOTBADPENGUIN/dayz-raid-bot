@@ -7,6 +7,7 @@ const path = require('path');
 const ffmpegPath = require('ffmpeg-static');
 const https = require('https');
 const fs = require('fs');
+const Gamedig = require('gamedig');
 
 try { require('sodium'); } catch(e) {
   try { require('libsodium-wrappers'); } catch(e2) {
@@ -252,10 +253,6 @@ async function phoneCallAlert() {
   }
 }
 
-client.once('ready', () => {
-  console.log(`Bot connecte : ${client.user.tag}`);
-});
-
 client.on('messageCreate', async (message) => {
   if (message.author.id === client.user.id) return;
   if (message.channelId !== process.env.ALERT_CHANNEL_ID) return;
@@ -302,6 +299,50 @@ client.on('messageCreate', async (message) => {
   }
 
   await triggerRaidAlert({ location: 'Detecte via message Discord', player: message.author.username });
+});
+
+async function mettreAJourSalonServeur() {
+  if (!process.env.SERVER_IP) return;
+
+  const guild = client.guilds.cache.get(process.env.GUILD_ID);
+  if (!guild) return;
+
+  const [ip, port] = process.env.SERVER_IP.split(':');
+
+  let nom;
+  try {
+    const state = await Gamedig.query({ type: 'dayz', host: ip, port: parseInt(port) });
+    nom = `🟢 DayZ | ${state.players.length}/${state.maxplayers}`;
+  } catch (e) {
+    nom = `🔴 DayZ | Hors ligne`;
+  }
+
+  // Trouver ou creer le salon vocal
+  let salon = guild.channels.cache.find(
+    ch => ch.isVoiceBased() && ch.name.includes('DayZ |')
+  );
+
+  if (salon) {
+    await salon.setName(nom).catch(() => {});
+  } else {
+    await guild.channels.create({
+      name: nom,
+      type: 2, // GUILD_VOICE
+      permissionOverwrites: [{
+        id: guild.roles.everyone,
+        deny: ['Connect'],
+      }],
+    }).catch(() => {});
+  }
+}
+
+client.once('ready', async () => {
+  console.log(`Bot connecte : ${client.user.tag}`);
+  // Lancer la mise a jour du salon serveur toutes les 60 secondes
+  if (process.env.SERVER_IP) {
+    await mettreAJourSalonServeur();
+    setInterval(mettreAJourSalonServeur, 60000);
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
