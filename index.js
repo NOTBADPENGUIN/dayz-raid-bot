@@ -379,13 +379,41 @@ async function mettreAJourSalonServeur() {
   console.log(`Salon mis a jour : ${nom}`);
 }
 
+async function nettoyerSalonAlerte() {
+  const guild = client.guilds.cache.get(process.env.GUILD_ID);
+  if (!guild) return;
+  const channel = guild.channels.cache.get(process.env.ALERT_CHANNEL_ID);
+  if (!channel) return;
+
+  const cinqHeures = Date.now() - 5 * 60 * 60 * 1000;
+
+  try {
+    let messages;
+    do {
+      messages = await channel.messages.fetch({ limit: 100 });
+      const vieux = messages.filter(m => m.createdTimestamp < cinqHeures);
+      if (vieux.size === 0) break;
+      if (vieux.size === 1) {
+        await vieux.first().delete().catch(() => {});
+      } else {
+        await channel.bulkDelete(vieux, true).catch(() => {});
+      }
+      console.log(`Nettoyage : ${vieux.size} message(s) supprimes`);
+    } while (messages.size === 100);
+  } catch (e) {
+    console.log('Erreur nettoyage salon:', e.message);
+  }
+}
+
 client.once('ready', async () => {
   console.log(`Bot connecte : ${client.user.tag}`);
-  // Lancer la mise a jour du salon serveur toutes les 60 secondes
+  // Mise a jour du salon serveur toutes les 60 secondes
   if (process.env.SERVER_IP) {
     await mettreAJourSalonServeur();
     setInterval(mettreAJourSalonServeur, 60000);
   }
+  // Nettoyage du salon d'alerte toutes les heures
+  setInterval(nettoyerSalonAlerte, 60 * 60 * 1000);
 });
 
 client.login(process.env.DISCORD_TOKEN);
