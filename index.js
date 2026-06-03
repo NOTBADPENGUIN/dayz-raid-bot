@@ -114,11 +114,22 @@ async function discordVoiceAlert(guild) {
     const audioPath = path.resolve(__dirname, 'alert.mp3');
     console.log(`🎵 Lecture de : ${audioPath}`);
 
-    const resource = createAudioResource(audioPath, {
-      inputType: StreamType.Arbitrary,
+    const { spawn } = require('child_process');
+    const ffmpeg = spawn(ffmpegPath, [
+      '-i', audioPath,
+      '-f', 's16le',
+      '-ar', '48000',
+      '-ac', '2',
+      'pipe:1'
+    ]);
+    const { createAudioResource: car, StreamType: ST } = require('@discordjs/voice');
+    const resource = car(ffmpeg.stdout, {
+      inputType: ST.Raw,
       inlineVolume: true,
     });
     resource.volume?.setVolume(1);
+
+    ffmpeg.stderr.on('data', d => console.log('ffmpeg:', d.toString().trim()));
 
     connection.subscribe(player);
     player.play(resource);
