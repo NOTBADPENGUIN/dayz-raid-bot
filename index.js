@@ -307,14 +307,32 @@ async function mettreAJourSalonServeur() {
   const guild = client.guilds.cache.get(process.env.GUILD_ID);
   if (!guild) return;
 
-  const [ip, port] = process.env.SERVER_IP.split(':');
+  const serverIp = process.env.SERVER_IP;
 
   let nom;
   try {
-    const state = await Gamedig.query({ type: 'dayz', host: ip, port: parseInt(port) });
-    nom = `🟢 DayZ | ${state.players.length}/${state.maxplayers}`;
+    // BattleMetrics API (HTTP, pas bloque par Railway)
+    const data = await new Promise((resolve, reject) => {
+      https.get(`https://api.battlemetrics.com/servers?filter[search]=${serverIp.split(':')[0]}&filter[game]=dayz&fields[server]=name,players,maxPlayers,status`, res => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          try { resolve(JSON.parse(body)); } catch(e) { reject(e); }
+        });
+      }).on('error', reject);
+    });
+
+    const serveur = data.data?.[0]?.attributes;
+    if (serveur && serveur.status === 'online') {
+      nom = `🟢 DayZ | ${serveur.players}/${serveur.maxPlayers}`;
+    } else if (serveur) {
+      nom = `🔴 DayZ | Hors ligne`;
+    } else {
+      nom = `🔴 DayZ | Introuvable`;
+    }
   } catch (e) {
-    nom = `🔴 DayZ | Hors ligne`;
+    console.log('Erreur BattleMetrics:', e.message);
+    nom = `🔴 DayZ | Erreur`;
   }
 
   // Trouver ou creer le salon vocal
