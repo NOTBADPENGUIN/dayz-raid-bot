@@ -6,6 +6,7 @@ const express = require('express');
 const path = require('path');
 const ffmpegPath = require('ffmpeg-static');
 const https = require('https');
+const fs = require('fs');
 
 try { require('sodium'); } catch(e) {
   try { require('libsodium-wrappers'); } catch(e2) {
@@ -18,6 +19,7 @@ process.env.FFMPEG_PATH = ffmpegPath;
 const COOLDOWN_MS = (parseInt(process.env.COOLDOWN_SECONDS) || 60) * 1000;
 const RAID_ALARM_ROLE_ID = process.env.RAID_ALARM_ROLE_ID;
 const DM_INTERVAL_MS = 15000;
+const PRESENCE_FILE = path.resolve(__dirname, 'joueurs_en_ligne.json');
 
 const client = new Client({
   intents: [
@@ -36,7 +38,22 @@ let dernierRaid = 0;
 let voiceAlertActive = false;
 let dmSpamInterval = null;
 
-const joueursEnLigne = new Set();
+// Charger la liste persistante depuis le fichier
+function chargerJoueurs() {
+  try {
+    const data = fs.readFileSync(PRESENCE_FILE, 'utf8');
+    return new Set(JSON.parse(data));
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function sauvegarderJoueurs(set) {
+  fs.writeFileSync(PRESENCE_FILE, JSON.stringify([...set]), 'utf8');
+}
+
+const joueursEnLigne = chargerJoueurs();
+console.log(`Joueurs en ligne charges : ${joueursEnLigne.size}`);
 
 app.post('/webhook', async (req, res) => {
   const body = req.body;
@@ -244,13 +261,15 @@ client.on('messageCreate', async (message) => {
 
   if (cmd === '!joue') {
     joueursEnLigne.add(message.author.id);
-    await message.reply(`${message.author.username} est en ligne — DMs desactives. Tape !offline quand tu pars.`);
+    sauvegarderJoueurs(joueursEnLigne);
+    await message.reply(`${message.author.username} est en ligne — DMs desactives jusqu a !offline.`);
     return;
   }
 
   if (cmd === '!offline') {
     joueursEnLigne.delete(message.author.id);
-    await message.reply(`${message.author.username} est hors ligne — tu recevras les alertes DM au prochain raid.`);
+    sauvegarderJoueurs(joueursEnLigne);
+    await message.reply(`${message.author.username} est hors ligne — DMs reactives au prochain raid.`);
     return;
   }
 
