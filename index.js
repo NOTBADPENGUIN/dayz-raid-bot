@@ -1,20 +1,22 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const { spawn } = require('child_process');
 const express = require('express');
 const path = require('path');
 const ffmpegPath = require('ffmpeg-static');
 
-// Nécessaire pour le chiffrement vocal Discord
 try { require('sodium'); } catch(e) {
   try { require('libsodium-wrappers'); } catch(e2) {
-    console.warn('⚠️ Sodium non trouvé, la connexion vocale peut échouer. Lance : npm install sodium');
+    console.warn('⚠️ Sodium non trouvé. Lance : npm install sodium');
   }
 }
 
 process.env.FFMPEG_PATH = ffmpegPath;
 
 const COOLDOWN_MS = (parseInt(process.env.COOLDOWN_SECONDS) || 60) * 1000;
+const RAID_ALARM_ROLE_ID = process.env.RAID_ALARM_ROLE_ID;
+const DM_INTERVAL_MS = 15000;
 
 const client = new Client({
   intents: [
@@ -31,6 +33,10 @@ app.use(express.json());
 
 let dernierRaid = 0;
 let voiceAlertActive = false;
+let dmSpamInterval = null;
+
+// Membres qui ont tapé !joue — ils ne reçoivent pas de DM spam
+const joueursEnLigne = new Set();
 
 app.post('/webhook', async (req, res) => {
   const body = req.body;
@@ -42,8 +48,40 @@ app.post('/webhook', async (req, res) => {
 async function logToDiscord(guild, message) {
   if (!process.env.LOG_CHANNEL_ID) return;
   const logChannel = guild.channels.cache.get(process.env.LOG_CHANNEL_ID);
-  if (logChannel) {
-    await logChannel.send(message).catch(() => {});
+  if (logChannel) await logChannel.send(message).catch(() => {});
+}
+
+async function envoyerDMsRaid(guild, data) {
+  if (!RAID_ALARM_ROLE_ID) return;
+
+  await guild.members.fetch();
+  const membres = guild.members.cache.filter(m =>
+    m.roles.cache.has(RAID_ALARM_ROLE_ID) && !m.user.bot
+  );
+
+  for (const [id, membre] of membres) {
+    if (joueursEnLigne.has(id)) continue;
+    try {
+      await membre.send(`🚨 **RAID EN COURS !**\n📍 Localisation : **${data.location || 'Inconnue'}**\n👤 Détecté par : **${data.player || 'Raid Alarm'}**\n⏰ ${new Date().toLocaleTimeString('fr-FR')}\n\nTape \`!joue\` dans le salon raid pour arrêter ces notifications.`);
+    } catch (e) {
+      console.log(`Impossible d'envoyer DM à ${membre.user.username}`);
+    }
+  }
+}
+
+function demarrerSpamDM(guild, data) {
+  stopperSpamDM();
+  dmSpamInterval = setInterval(async () => {
+    const guild2 = client.guilds.cache.get(process.env.GUILD_ID);
+    if (!guild2) return;
+    await envoyerDMsRaid(guild2, data);
+  }, DM_INTERVAL_MS);
+}
+
+function stopperSpamDM() {
+  if (dmSpamInterval) {
+    clearInterval(dmSpamInterval);
+    dmSpamInterval = null;
   }
 }
 
@@ -63,7 +101,6 @@ async function triggerRaidAlert(data) {
   dernierRaid = maintenant;
 
   const channel = guild.channels.cache.get(process.env.ALERT_CHANNEL_ID);
-
   if (channel) {
     const embed = new EmbedBuilder()
       .setColor(0xFF0000)
@@ -75,11 +112,14 @@ async function triggerRaidAlert(data) {
         { name: '👤 Détecté par', value: data.player || 'Raid Alarm', inline: true }
       )
       .setTimestamp();
-
     await channel.send({ content: '@everyone **RAID ALERT !**', embeds: [embed] });
   }
 
-  await logToDiscord(guild, `🚨 **Raid déclenché** — Localisation : \`${data.location || 'Inconnue'}\` — Joueur : \`${data.player || 'Raid Alarm'}\` — <t:${Math.floor(maintenant / 1000)}:T>`);
+  await logToDiscord(guild, `🚨 **Raid déclenché** — \`${data.location || 'Inconnue'}\` — \`${data.player || 'Raid Alarm'}\` — <t:${Math.floor(maintenant / 1000)}:T>`);
+
+  // Envoi DM immédiat + spam toutes les 15s aux membres hors ligne
+  await envoyerDMsRaid(guild, data);
+  demarrerSpamDM(guild, data);
 
   await discordVoiceAlert(guild);
 
@@ -115,7 +155,6 @@ async function discordVoiceAlert(guild) {
       selfDeaf: false,
     });
 
-    // Attendre que la connexion soit vraiment prête avant de jouer
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
       console.log('✅ Connexion vocale prête.');
@@ -130,7 +169,6 @@ async function discordVoiceAlert(guild) {
     const audioPath = path.resolve(__dirname, 'alert.mp3');
     console.log(`🎵 Lecture de : ${audioPath}`);
 
-    const { spawn } = require('child_process');
     const ffmpeg = spawn(ffmpegPath, [
       '-i', audioPath,
       '-f', 's16le',
@@ -138,28 +176,20 @@ async function discordVoiceAlert(guild) {
       '-ac', '2',
       'pipe:1'
     ]);
-    const { createAudioResource: car, StreamType: ST } = require('@discordjs/voice');
-    const resource = car(ffmpeg.stdout, {
-      inputType: ST.Raw,
+    const resource = createAudioResource(ffmpeg.stdout, {
+      inputType: StreamType.Raw,
       inlineVolume: true,
     });
     resource.volume?.setVolume(1);
-
     ffmpeg.stderr.on('data', d => console.log('ffmpeg:', d.toString().trim()));
 
     connection.subscribe(player);
     player.play(resource);
 
-    // Ne déconnecter QUE quand le player passe de Playing → Idle (fin réelle)
     player.on('stateChange', (oldState, newState) => {
       console.log(`🔄 État audio : ${oldState.status} → ${newState.status}`);
-      if (
-        oldState.status === AudioPlayerStatus.Playing &&
-        newState.status === AudioPlayerStatus.Idle
-      ) {
-        console.log('✅ Audio terminé, déconnexion.');
-        voiceAlertActive = false;
-        connection.destroy();
+      if (oldState.status === AudioPlayerStatus.Playing && newState.status === AudioPlayerStatus.Idle) {
+        console.log('✅ Audio terminé.');
       }
     });
 
@@ -169,14 +199,14 @@ async function discordVoiceAlert(guild) {
       connection.destroy();
     });
 
-    // Sécurité : reset après 5 minutes max
+    // Quitter le salon après 60 secondes
     setTimeout(() => {
       if (voiceAlertActive) {
-        console.log('⚠️ Timeout sécurité, déconnexion forcée.');
+        console.log('⏱️ 60s écoulées, déconnexion du salon vocal.');
         voiceAlertActive = false;
         try { connection.destroy(); } catch (e) {}
       }
-    }, 300000);
+    }, 60000);
 
   } catch (err) {
     voiceAlertActive = false;
@@ -187,7 +217,6 @@ async function discordVoiceAlert(guild) {
 async function phoneCallAlert() {
   const twilio = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
   const numbers = process.env.PHONE_NUMBERS.split(',');
-
   for (const num of numbers) {
     try {
       await twilio.calls.create({
@@ -210,11 +239,28 @@ client.on('messageCreate', async (message) => {
   if (message.author.id === client.user.id) return;
   if (message.channelId !== process.env.ALERT_CHANNEL_ID) return;
 
-  // Commande !status
-  if (message.content.trim() === '!status') {
+  const cmd = message.content.trim().toLowerCase();
+
+  // !joue — marquer comme en ligne, stopper les DMs
+  if (cmd === '!joue') {
+    joueursEnLigne.add(message.author.id);
+    await message.reply(`✅ **${message.author.username}** est en ligne — les notifications DM sont désactivées. Tape \`!offline\` quand tu pars.`);
+    return;
+  }
+
+  // !offline — marquer comme absent, reprendre les DMs
+  if (cmd === '!offline') {
+    joueursEnLigne.delete(message.author.id);
+    await message.reply(`💤 **${message.author.username}** est hors ligne — tu recevras les alertes DM lors du prochain raid.`);
+    return;
+  }
+
+  // !status
+  if (cmd === '!status') {
     const maintenant = Date.now();
     const tempsRestant = COOLDOWN_MS - (maintenant - dernierRaid);
     const cooldownActif = tempsRestant > 0;
+    const enLigne = joueursEnLigne.size;
 
     const embed = new EmbedBuilder()
       .setColor(cooldownActif ? 0xFFA500 : 0x00FF00)
@@ -222,35 +268,20 @@ client.on('messageCreate', async (message) => {
       .addFields(
         { name: '🤖 Bot', value: 'En ligne ✅', inline: true },
         { name: '🔊 Alerte vocale', value: voiceAlertActive ? 'En cours ⚠️' : 'Inactive ✅', inline: true },
-        {
-          name: '⏳ Cooldown',
-          value: cooldownActif
-            ? `Actif — ${Math.ceil(tempsRestant / 1000)}s restantes`
-            : 'Inactif — prêt',
-          inline: true
-        },
-        {
-          name: '🕐 Dernier raid',
-          value: dernierRaid > 0
-            ? `<t:${Math.floor(dernierRaid / 1000)}:R>`
-            : 'Aucun depuis le démarrage',
-          inline: true
-        },
-        { name: '⏱️ Cooldown configuré', value: `${COOLDOWN_MS / 1000}s`, inline: true }
+        { name: '⏳ Cooldown', value: cooldownActif ? `Actif — ${Math.ceil(tempsRestant / 1000)}s restantes` : 'Inactif — prêt', inline: true },
+        { name: '🕐 Dernier raid', value: dernierRaid > 0 ? `<t:${Math.floor(dernierRaid / 1000)}:R>` : 'Aucun depuis le démarrage', inline: true },
+        { name: '⏱️ Cooldown configuré', value: `${COOLDOWN_MS / 1000}s`, inline: true },
+        { name: '🎮 Joueurs en ligne', value: `${enLigne} joueur(s) (DMs désactivés)`, inline: true }
       )
       .setTimestamp();
-
     await message.reply({ embeds: [embed] });
     return;
   }
 
-  // Commande !test
-  if (message.content.trim() === '!test') {
+  // !test
+  if (cmd === '!test') {
     await message.reply('🧪 Lancement d\'une alerte de test...');
-    await triggerRaidAlert({
-      location: 'Test',
-      player: message.author.username
-    });
+    await triggerRaidAlert({ location: 'Test', player: message.author.username });
     return;
   }
 
