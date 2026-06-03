@@ -314,7 +314,8 @@ async function mettreAJourSalonServeur() {
     // BattleMetrics API (HTTP, pas bloque par Railway)
     const ip = serverIp.split(':')[0];
     const data = await new Promise((resolve, reject) => {
-      https.get(`https://api.battlemetrics.com/servers?filter[search]=${ip}&filter[game]=dayz&fields[server]=name,players,maxPlayers,status,ip`, res => {
+      const url = `https://api.battlemetrics.com/servers?filter%5Bsearch%5D=${ip}&filter%5Bgame%5D=dayz&fields%5Bserver%5D=name,players,maxPlayers,status,ip`;
+      https.get(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'dayz-raid-bot/1.0' } }, res => {
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => {
