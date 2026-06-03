@@ -51,10 +51,9 @@ async function logToDiscord(guild, message) {
 
 async function envoyerDMsRaid(guild, data) {
   if (!RAID_ALARM_ROLE_ID) return;
-  await guild.members.fetch();
-  const membres = guild.members.cache.filter(m =>
-    m.roles.cache.has(RAID_ALARM_ROLE_ID) && !m.user.bot
-  );
+  const role = guild.roles.cache.get(RAID_ALARM_ROLE_ID);
+  if (!role) { console.log('Role RAID ALARM introuvable'); return; }
+  const membres = role.members.filter(m => !m.user.bot);
   for (const [id, membre] of membres) {
     if (joueursEnLigne.has(id)) continue;
     try {
