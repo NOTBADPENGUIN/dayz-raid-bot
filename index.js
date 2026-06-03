@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
 const { spawn } = require('child_process');
 const express = require('express');
@@ -323,17 +323,19 @@ async function mettreAJourSalonServeur() {
   );
 
   if (salon) {
-    await salon.setName(nom).catch(() => {});
+    if (salon.name !== nom) await salon.setName(nom).catch(e => console.log('setName erreur:', e.message));
   } else {
+    console.log('Creation du salon vocal DayZ...');
     await guild.channels.create({
       name: nom,
-      type: 2, // GUILD_VOICE
+      type: ChannelType.GuildVoice,
       permissionOverwrites: [{
         id: guild.roles.everyone,
-        deny: ['Connect'],
+        deny: [PermissionFlagsBits.Connect],
       }],
-    }).catch(() => {});
+    }).catch(e => console.log('Erreur creation salon:', e.message));
   }
+  console.log(`Salon mis a jour : ${nom}`);
 }
 
 client.once('ready', async () => {
