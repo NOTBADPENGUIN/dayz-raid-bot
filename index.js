@@ -312,8 +312,9 @@ async function mettreAJourSalonServeur() {
   let nom;
   try {
     // BattleMetrics API (HTTP, pas bloque par Railway)
+    const ip = serverIp.split(':')[0];
     const data = await new Promise((resolve, reject) => {
-      https.get(`https://api.battlemetrics.com/servers?filter[search]=${serverIp.split(':')[0]}&filter[game]=dayz&fields[server]=name,players,maxPlayers,status`, res => {
+      https.get(`https://api.battlemetrics.com/servers?filter[search]=${ip}&filter[game]=dayz&fields[server]=name,players,maxPlayers,status,ip`, res => {
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => {
@@ -322,7 +323,9 @@ async function mettreAJourSalonServeur() {
       }).on('error', reject);
     });
 
-    const serveur = data.data?.[0]?.attributes;
+    // Trouver le serveur correspondant a notre IP exacte
+    const serveurEntry = data.data?.find(s => s.attributes.ip === ip);
+    const serveur = serveurEntry?.attributes;
     if (serveur && serveur.status === 'online') {
       nom = `🟢 DayZ | ${serveur.players}/${serveur.maxPlayers}`;
     } else if (serveur) {
