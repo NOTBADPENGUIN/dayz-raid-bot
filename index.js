@@ -50,18 +50,32 @@ async function logToDiscord(guild, message) {
 }
 
 async function envoyerDMsRaid(guild, data) {
-  if (!RAID_ALARM_ROLE_ID) return;
-  const role = guild.roles.cache.get(RAID_ALARM_ROLE_ID);
-  if (!role) { console.log('Role RAID ALARM introuvable'); return; }
-  const membres = role.members.filter(m => !m.user.bot);
+  if (!RAID_ALARM_ROLE_ID) { console.log('RAID_ALARM_ROLE_ID non configure'); return; }
+
+  // Fetch via REST pour eviter le rate limit Gateway
+  let tousLesMembres;
+  try {
+    tousLesMembres = await guild.members.list({ limit: 1000 });
+  } catch (e) {
+    console.log('Erreur fetch membres:', e.message);
+    return;
+  }
+
+  const membres = tousLesMembres.filter(m =>
+    m.roles.cache.has(RAID_ALARM_ROLE_ID) && !m.user.bot
+  );
+
+  console.log(`DM raid: ${membres.size} membre(s) avec le role, ${joueursEnLigne.size} en ligne`);
+
   for (const [id, membre] of membres) {
-    if (joueursEnLigne.has(id)) continue;
+    if (joueursEnLigne.has(id)) { console.log(`Skip DM ${membre.user.username} (en ligne)`); continue; }
     try {
       await membre.send(
         `RAID EN COURS !\nLocalisation : ${data.location || 'Inconnue'}\nDetecte par : ${data.player || 'Raid Alarm'}\nHeure : ${new Date().toLocaleTimeString('fr-FR')}\n\nTape !joue dans le salon raid pour arreter ces notifications.`
       );
+      console.log(`DM envoye a ${membre.user.username}`);
     } catch (e) {
-      console.log(`Impossible d envoyer DM a ${membre.user.username}`);
+      console.log(`Impossible DM ${membre.user.username}: ${e.message}`);
     }
   }
 }
