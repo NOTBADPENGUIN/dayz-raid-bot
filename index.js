@@ -256,17 +256,17 @@ async function phoneCallAlert() {
 client.on('messageCreate', async (message) => {
   if (message.author.id === client.user.id) return;
 
-  // Si c'est un webhook externe dans le salon d'alerte -> declencher le raid
-  if (message.webhookId && message.channelId === process.env.ALERT_CHANNEL_ID) {
-    console.log(`Webhook detecte dans le salon d'alerte : ${message.author.username}`);
+  // Si c'est un bot/webhook dans le salon d'alerte -> declencher le raid
+  if (message.author.bot && message.channelId === process.env.ALERT_CHANNEL_ID) {
+    console.log(`Message bot/webhook detecte dans le salon d'alerte : ${message.author.username}`);
     await triggerRaidAlert({
-      location: 'Detecte via webhook Discord',
+      location: 'Detecte via bot/webhook Discord',
       player: message.author.username || 'Raid Alarm'
     });
     return;
   }
 
-  // Ignorer les autres messages de bots
+  // Ignorer les bots dans les autres salons
   if (message.author.bot) return;
 
   if (message.content.trim().toLowerCase() === '!fc') {
