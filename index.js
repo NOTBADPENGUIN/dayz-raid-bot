@@ -100,7 +100,11 @@ async function envoyerDMsRaid(guild, data) {
 
 function demarrerSpamDM(data) {
   stopperSpamDM();
+  let iterations = 0;
+  const MAX_ITERATIONS = 20; // arret apres 5 minutes max (20 x 15s)
   dmSpamInterval = setInterval(async () => {
+    iterations++;
+    if (iterations >= MAX_ITERATIONS) { stopperSpamDM(); return; }
     const guild = client.guilds.cache.get(process.env.GUILD_ID);
     if (!guild) return;
     await envoyerDMsRaid(guild, data);
@@ -118,16 +122,15 @@ async function triggerRaidAlert(data) {
   const maintenant = Date.now();
   const tempsRestant = COOLDOWN_MS - (maintenant - dernierRaid);
 
-  const guild = client.guilds.cache.get(process.env.GUILD_ID);
-  if (!guild) return;
-
+  // Bloquer immediatement pour eviter la double execution (race condition)
   if (tempsRestant > 0) {
-    const secondes = Math.ceil(tempsRestant / 1000);
-    console.log(`Cooldown actif (${secondes}s restantes)`);
-    await logToDiscord(guild, `Alerte ignoree, cooldown actif (${secondes}s restantes)`);
+    console.log(`Cooldown actif (${Math.ceil(tempsRestant / 1000)}s restantes)`);
     return;
   }
   dernierRaid = maintenant;
+
+  const guild = client.guilds.cache.get(process.env.GUILD_ID);
+  if (!guild) return;
 
   const channel = guild.channels.cache.get(process.env.ALERT_CHANNEL_ID);
   if (channel) {
