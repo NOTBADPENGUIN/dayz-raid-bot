@@ -294,13 +294,15 @@ client.once('ready', async () => {
   console.log(`Bot connecte : ${client.user.tag}`);
   await registerCommands();
 
-  // Boucles toutes les 60s pour chaque serveur
-  setInterval(async () => {
+  // Mise a jour immediate au demarrage puis toutes les 60s
+  const updateAllServers = async () => {
     for (const [, guild] of client.guilds.cache) {
       const config = await getConfig(guild.id);
       await mettreAJourSalonServeur(guild, config);
     }
-  }, 60000);
+  };
+  await updateAllServers();
+  setInterval(updateAllServers, 60000);
 
   // Nettoyage toutes les heures
   setInterval(async () => {
