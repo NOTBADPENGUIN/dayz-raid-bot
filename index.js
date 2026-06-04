@@ -251,15 +251,17 @@ async function mettreAJourSalonServeur(guild, config) {
   const ip = config.serverIp.split(':')[0];
   let nom;
   try {
-    const url = `https://api.battlemetrics.com/servers?filter%5Bsearch%5D=${ip}&filter%5Bgame%5D=dayz&fields%5Bserver%5D=name,players,maxPlayers,status,ip`;
-    const { data } = await axios.get(url, { headers: { 'Accept': 'application/json' }, timeout: 10000 });
-    const serveur = data.data?.find(s => s.attributes.ip === ip)?.attributes;
-    if (serveur?.status === 'online') nom = `🟢 DayZ | ${serveur.players}/${serveur.maxPlayers}`;
-    else nom = `🔴 DayZ | Hors ligne`;
+    const steamKey = process.env.STEAM_API_KEY;
+    const url = `https://api.steampowered.com/IGameServersService/GetServerList/v1/?filter=addr\\${config.serverIp}&key=${steamKey}&limit=1`;
+    const { data } = await axios.get(url, { timeout: 10000 });
+    const serveur = data.response?.servers?.[0];
+    if (serveur) {
+      nom = `🟢 DayZ | ${serveur.players}/${serveur.max_players}`;
+    } else {
+      nom = `🔴 DayZ | Hors ligne`;
+    }
   } catch (e) {
-    console.log('Erreur BattleMetrics:', e.message);
-    console.log('Status:', e.response?.status);
-    console.log('Data:', JSON.stringify(e.response?.data)?.slice(0, 200));
+    console.log('Erreur Steam API:', e.message);
     nom = `🔴 DayZ | Erreur`;
   }
 
