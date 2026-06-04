@@ -6,6 +6,7 @@ const express = require('express');
 const path = require('path');
 const ffmpegPath = require('ffmpeg-static');
 const https = require('https');
+const axios = require('axios');
 const fs = require('fs');
 const mongoose = require('mongoose');
 
@@ -250,18 +251,12 @@ async function mettreAJourSalonServeur(guild, config) {
   const ip = config.serverIp.split(':')[0];
   let nom;
   try {
-    const data = await new Promise((resolve, reject) => {
-      const url = `https://api.battlemetrics.com/servers?filter%5Bsearch%5D=${ip}&filter%5Bgame%5D=dayz&fields%5Bserver%5D=name,players,maxPlayers,status,ip`;
-      https.get(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'dayz-raid-bot/1.0' } }, res => {
-        let body = '';
-        res.on('data', c => body += c);
-        res.on('end', () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
-      }).on('error', reject);
-    });
+    const url = `https://api.battlemetrics.com/servers?filter%5Bsearch%5D=${ip}&filter%5Bgame%5D=dayz&fields%5Bserver%5D=name,players,maxPlayers,status,ip`;
+    const { data } = await axios.get(url, { headers: { 'Accept': 'application/json' }, timeout: 10000 });
     const serveur = data.data?.find(s => s.attributes.ip === ip)?.attributes;
     if (serveur?.status === 'online') nom = `🟢 DayZ | ${serveur.players}/${serveur.maxPlayers}`;
     else nom = `🔴 DayZ | Hors ligne`;
-  } catch { nom = `🔴 DayZ | Erreur`; }
+  } catch (e) { console.log('Erreur BattleMetrics:', e.message); nom = `🔴 DayZ | Erreur`; }
 
   let salon = guild.channels.cache.find(ch => ch.isVoiceBased() && ch.name.includes('DayZ |'));
   if (salon) { if (salon.name !== nom) await salon.setName(nom).catch(() => {}); }
