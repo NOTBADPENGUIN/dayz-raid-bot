@@ -251,7 +251,10 @@ async function mettreAJourSalonServeur(guild, config) {
   const ip = config.serverIp.split(':')[0];
   let nom;
   try {
-    const url = `https://api.steampowered.com/IGameServersService/GetServerList/v1/?filter=addr\\${config.serverIp}&key=${process.env.STEAM_API_KEY}&limit=1`;
+    // Steam utilise le query port (game port + 1)
+    const [serverIp, serverPort] = config.serverIp.split(':');
+    const queryPort = parseInt(serverPort) + 1;
+    const url = `https://api.steampowered.com/IGameServersService/GetServerList/v1/?filter=addr\\${serverIp}:${queryPort}&key=${process.env.STEAM_API_KEY}&limit=1`;
     const { data } = await axios.get(url, { timeout: 10000 });
     const serveur = data.response?.servers?.[0];
     if (serveur) nom = `🟢 DayZ | ${serveur.players}/${serveur.max_players}`;
