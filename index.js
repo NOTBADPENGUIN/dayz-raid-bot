@@ -251,12 +251,17 @@ async function mettreAJourSalonServeur(guild, config) {
   const ip = config.serverIp.split(':')[0];
   let nom;
   try {
-    const url = `https://api.steampowered.com/IGameServersService/GetServerList/v1/?filter=addr\\${config.serverIp}&key=${process.env.STEAM_API_KEY}&limit=1`;
+    const [serverIp, serverPort] = config.serverIp.split(':');
+    const queryPort = parseInt(serverPort) + 1;
+    const filter = encodeURIComponent(`addr\\${serverIp}:${queryPort}`);
+    const url = `https://api.steampowered.com/IGameServersService/GetServerList/v1/?filter=${filter}&key=${process.env.STEAM_API_KEY}&limit=1`;
+    console.log(`Steam requete: ${serverIp}:${queryPort}`);
     const { data } = await axios.get(url, { timeout: 10000 });
+    console.log(`Steam reponse: ${JSON.stringify(data.response)}`);
     const serveur = data.response?.servers?.[0];
     if (serveur) nom = `🟢 DayZ | ${serveur.players}/${serveur.max_players}`;
     else nom = `🔴 DayZ | Hors ligne`;
-    console.log(`Salon serveur: ${nom}`);
+    console.log(`Salon: ${nom}`);
   } catch (e) { console.log('Erreur Steam API:', e.message); nom = `🔴 DayZ | Erreur`; }
 
   let salon = guild.channels.cache.find(ch => ch.isVoiceBased() && ch.name.includes('DayZ |'));
