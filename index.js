@@ -256,7 +256,12 @@ async function mettreAJourSalonServeur(guild, config) {
     const serveur = data.data?.find(s => s.attributes.ip === ip)?.attributes;
     if (serveur?.status === 'online') nom = `🟢 DayZ | ${serveur.players}/${serveur.maxPlayers}`;
     else nom = `🔴 DayZ | Hors ligne`;
-  } catch (e) { console.log('Erreur BattleMetrics:', e.message); nom = `🔴 DayZ | Erreur`; }
+  } catch (e) {
+    console.log('Erreur BattleMetrics:', e.message);
+    console.log('Status:', e.response?.status);
+    console.log('Data:', JSON.stringify(e.response?.data)?.slice(0, 200));
+    nom = `🔴 DayZ | Erreur`;
+  }
 
   let salon = guild.channels.cache.find(ch => ch.isVoiceBased() && ch.name.includes('DayZ |'));
   if (salon) { if (salon.name !== nom) await salon.setName(nom).catch(() => {}); }
