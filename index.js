@@ -159,14 +159,17 @@ async function triggerRaidAlert(guild, data) {
 
   const channel = guild.channels.cache.get(config.alertChannelId);
   if (channel) {
+    const heureRaid = new Date();
+    const heureReconstruction = new Date(heureRaid.getTime() + 45 * 60 * 1000);
     const embed = new EmbedBuilder()
       .setColor(0xFF0000)
       .setTitle('RAID EN COURS !')
       .setDescription('Un raid a ete detecte sur le serveur !')
       .addFields(
         { name: 'Localisation', value: data.location || 'Inconnue', inline: true },
-        { name: 'Heure', value: new Date().toLocaleTimeString('fr-FR'), inline: true },
-        { name: 'Detecte par', value: data.player || 'Raid Alarm', inline: true }
+        { name: 'Heure', value: heureRaid.toLocaleTimeString('fr-FR'), inline: true },
+        { name: 'Detecte par', value: data.player || 'Raid Alarm', inline: true },
+        { name: '🔨 Reconstruire les portes', value: heureReconstruction.toLocaleTimeString('fr-FR'), inline: false }
       )
       .setTimestamp();
     await channel.send({ content: '@everyone **RAID ALERT !**', embeds: [embed] });
