@@ -397,6 +397,12 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
+  // Commande !marion (tous salons)
+  if (message.content.trim().toLowerCase() === '!marion') {
+    await message.reply('https://www.youtube.com/watch?v=Aq5WXmQQooo');
+    return;
+  }
+
   if (message.channelId !== config.alertChannelId) return;
 
   const cmd = message.content.trim().toLowerCase();
