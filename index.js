@@ -16,10 +16,17 @@ try { require('sodium'); } catch(e) {
 
 process.env.FFMPEG_PATH = ffmpegPath;
 
+// ─── Filets de securite : ne jamais crasher tout le bot pour une erreur isolee ──
+process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e?.message || e));
+
 // ─── Connexion MongoDB ────────────────────────────────────────────────────────
-mongoose.connect(process.env.MONGODB_URI).then(() => {
-  console.log('MongoDB connecte');
-}).catch(e => console.error('Erreur MongoDB:', e.message));
+if (!process.env.MONGODB_URI) {
+  console.error('⚠️ MONGODB_URI manquant ! Ce bot a besoin d\'une base MongoDB. Ajoute la variable MONGODB_URI dans Railway (cf README).');
+} else {
+  mongoose.connect(process.env.MONGODB_URI).then(() => {
+    console.log('MongoDB connecte');
+  }).catch(e => console.error('Erreur MongoDB:', e.message));
+}
 
 // ─── Schema config par serveur ────────────────────────────────────────────────
 const guildSchema = new mongoose.Schema({
@@ -103,9 +110,19 @@ const commands = [
 
 // ─── Enregistrer les slash commands ──────────────────────────────────────────
 async function registerCommands() {
+  // On utilise l'ID de l'application du bot DEJA connecte (client.application.id)
+  // -> plus besoin de la variable CLIENT_ID, et ca ne peut plus etre "undefined".
+  const appId = client.application?.id || client.user.id;
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-  console.log('Slash commands enregistrees');
+  if (process.env.GUILD_ID) {
+    // Enregistrement sur le serveur precis = commandes dispo INSTANTANEMENT
+    await rest.put(Routes.applicationGuildCommands(appId, process.env.GUILD_ID), { body: commands });
+    console.log(`Slash commands enregistrees sur la guild ${process.env.GUILD_ID}`);
+  } else {
+    // Sinon enregistrement global (peut prendre jusqu'a ~1h pour apparaitre)
+    await rest.put(Routes.applicationCommands(appId), { body: commands });
+    console.log('Slash commands enregistrees (global)');
+  }
 }
 
 // ─── Logique d'alerte ─────────────────────────────────────────────────────────
@@ -293,9 +310,15 @@ async function nettoyerSalon(guild, config) {
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────────
+client.on('error', (e) => console.error('Client error:', e?.message || e));
+
 client.once('ready', async () => {
   console.log(`Bot connecte : ${client.user.tag}`);
-  await registerCommands();
+  try {
+    await registerCommands();
+  } catch (e) {
+    console.error('Erreur enregistrement des commandes (le bot continue):', e.message);
+  }
 
   // Mise a jour immediate au demarrage puis toutes les 60s
   const updateAllServers = async () => {
